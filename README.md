@@ -153,7 +153,7 @@ The application's entry point is still being built. Once it is in place, run it 
 
 ## Front-End Development
 
-The dashboards and panels live in `src/main/com/ui` and are separated by role:
+The dashboards and panels live in `src/main/java/com` and are separated by role:
 
 - Admin
 - Teacher
