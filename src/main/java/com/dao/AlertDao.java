@@ -1,8 +1,105 @@
 package com.dao;
 
-import com.dao.JDBC;
-import java.sql.Connection;
-import java.sql.DriverManager;
+import com.model.Alert;
+import com.model.AlertType;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+/** Admin alerts for invalid cards, out-of-bounds scans and absence thresholds. */
 public class AlertDao {
+
+    private static final String SELECT = """
+            SELECT a.alert_id, a.alert_type, a.student_id, a.card_uid, a.message, a.is_read, a.created_at,
+                   s.full_name
+            FROM alerts a
+            LEFT JOIN students s ON s.student_id = a.student_id""";
+
+    static Alert map(ResultSet rs) throws SQLException {
+        return new Alert(
+                rs.getInt("alert_id"),
+                AlertType.valueOf(rs.getString("alert_type")),
+                DaoSupport.getInteger(rs, "student_id"),
+                rs.getString("card_uid"),
+                rs.getString("message"),
+                rs.getBoolean("is_read"),
+                DaoSupport.dateTime(rs, "created_at"),
+                rs.getString("full_name"));
+    }
+
+
+    /** Raises an unread alert; studentId/cardUid may be null for an unregistered card. */
+    public int log(AlertType type, Integer studentId, String cardUid, String message) {
+        return (int) DaoSupport.insert(
+                "INSERT INTO alerts (alert_type, student_id, card_uid, message) VALUES (?, ?, ?, ?)",
+                type, studentId, DaoSupport.normalizeUid(cardUid), message);
+    }
+
+    public Optional<Alert> findById(int alertId) {
+        return DaoSupport.one(SELECT + " WHERE a.alert_id = ?", AlertDao::map, alertId);
+    }
+
+    /** Latest alerts first. */
+    public List<Alert> findRecent(int limit) {
+        return DaoSupport.list(SELECT + " ORDER BY a.created_at DESC, a.alert_id DESC LIMIT ?",
+                AlertDao::map, limit);
+    }
+
+    public List<Alert> findUnread() {
+        return DaoSupport.list(SELECT + " WHERE a.is_read = FALSE ORDER BY a.created_at DESC, a.alert_id DESC",
+                AlertDao::map);
+    }
+
+    public List<Alert> findByType(AlertType type, int limit) {
+        return DaoSupport.list(SELECT + " WHERE a.alert_type = ? ORDER BY a.created_at DESC, a.alert_id DESC LIMIT ?",
+                AlertDao::map, type, limit);
+    }
+
+    public List<Alert> findByStudent(int studentId) {
+        return DaoSupport.list(SELECT + " WHERE a.student_id = ? ORDER BY a.created_at DESC, a.alert_id DESC",
+                AlertDao::map, studentId);
+    }
+
+    /** Unread count for the badge. */
+    public int countUnread() {
+        return DaoSupport.count("SELECT COUNT(*) FROM alerts WHERE is_read = FALSE");
+    }
+
+    public int countUnreadByType(AlertType type) {
+        return DaoSupport.count("SELECT COUNT(*) FROM alerts WHERE is_read = FALSE AND alert_type = ?",
+                type.name());
+    }
+
+    /** Checks for an unread alert to avoid duplicate threshold notifications. */
+    public boolean existsUnread(int studentId, AlertType type) {
+        return DaoSupport.count(
+                "SELECT COUNT(*) FROM alerts WHERE student_id = ? AND alert_type = ? AND is_read = FALSE",
+                studentId, type.name()) > 0;
+    }
+
+    public boolean markRead(int alertId) {
+        return DaoSupport.update("UPDATE alerts SET is_read = TRUE WHERE alert_id = ?", alertId) > 0;
+    }
+
+    /** Returns how many alerts were marked read. */
+    public int markAllRead() {
+        return DaoSupport.update("UPDATE alerts SET is_read = TRUE WHERE is_read = FALSE");
+    }
+
+    public boolean delete(int alertId) {
+        return DaoSupport.update("DELETE FROM alerts WHERE alert_id = ?", alertId) > 0;
+    }
+
+    /** Clears alerts that were already read. Returns how many were deleted. */
+    public int deleteRead() {
+        return DaoSupport.update("DELETE FROM alerts WHERE is_read = TRUE");
+    }
+
+    /** Housekeeping: removes alerts older than the given time. */
+    public int deleteOlderThan(LocalDateTime cutoff) {
+        return DaoSupport.update("DELETE FROM alerts WHERE created_at < ?", cutoff);
+    }
 }

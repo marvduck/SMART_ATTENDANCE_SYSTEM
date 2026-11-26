@@ -1,24 +1,19 @@
--- SMART ATTENDANCE SYSTEM - DATABASE SCHEMA
-
 DROP DATABASE IF EXISTS smart_attendance;
 CREATE DATABASE smart_attendance
     CHARACTER SET utf8mb4
     COLLATE utf8mb4_unicode_ci;
 USE smart_attendance;
 
--- TABLES
--- 1. USERS  (login accounts for Admin / Teacher / Student)
 CREATE TABLE users (
     user_id        INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     username       VARCHAR(50)  NOT NULL UNIQUE,
-    password_hash  VARCHAR(100) NOT NULL,              -- BCrypt hash (60 chars), never plain text
+    password_hash  VARCHAR(100) NOT NULL,              -- BCrypt (60 chars); never plaintext
     role           ENUM('ADMIN','TEACHER','STUDENT') NOT NULL,
     is_active      BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_login     TIMESTAMP    NULL
 ) ENGINE=InnoDB;
 
--- 2. TEACHERS
 CREATE TABLE teachers (
     teacher_id   INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id      INT UNSIGNED NOT NULL UNIQUE,
@@ -30,23 +25,21 @@ CREATE TABLE teachers (
         REFERENCES users(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- 3. SECTIONS
 CREATE TABLE sections (
     section_id    INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    section_name  VARCHAR(50) NOT NULL,                -- e.g. 'TechPro C'
+    section_name  VARCHAR(50) NOT NULL,
     grade_level   TINYINT     NOT NULL,                -- 11 or 12
-    strand        VARCHAR(30) NULL,                    -- e.g. 'TVL-ICT'
-    school_year   VARCHAR(9)  NOT NULL,                -- e.g. '2026-2027'
+    strand        VARCHAR(30) NULL,
+    school_year   VARCHAR(9)  NOT NULL,                -- YYYY-YYYY
     adviser_id    INT UNSIGNED NULL,
     UNIQUE KEY uq_section (section_name, grade_level, school_year),
     CONSTRAINT fk_section_adviser FOREIGN KEY (adviser_id)
         REFERENCES teachers(teacher_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
--- 4. STUDENTS
 CREATE TABLE students (
     student_id   INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    user_id      INT UNSIGNED NULL UNIQUE,             -- login account (optional until created)
+    user_id      INT UNSIGNED NULL UNIQUE,             -- optional login account
     lrn          CHAR(12)     NOT NULL UNIQUE,         -- Learner Reference Number
     full_name    VARCHAR(100) NOT NULL,
     grade_level  TINYINT      NOT NULL,
@@ -61,10 +54,10 @@ CREATE TABLE students (
         REFERENCES sections(section_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
--- 5. RFID CARDS  (one active card per student)
+-- RFID cards: only one ACTIVE card per student.
 CREATE TABLE rfid_cards (
     card_id      INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    card_uid     VARCHAR(20)  NOT NULL UNIQUE,         -- UID from RC522, e.g. 'A1B2C3D4'
+    card_uid     VARCHAR(20)  NOT NULL UNIQUE,         -- RC522 UID
     student_id   INT UNSIGNED NOT NULL,
     status       ENUM('ACTIVE','LOST','DISABLED') NOT NULL DEFAULT 'ACTIVE',
     assigned_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -72,7 +65,6 @@ CREATE TABLE rfid_cards (
         REFERENCES students(student_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- 6. CLASS SCHEDULES  (used for the "Within Class Schedule?" check)
 CREATE TABLE class_schedules (
     schedule_id  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     section_id   INT UNSIGNED NOT NULL,
@@ -90,7 +82,7 @@ CREATE TABLE class_schedules (
         REFERENCES teachers(teacher_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
--- 7. ATTENDANCE RECORDS  (one row per student per day)
+-- Attendance: one row per student per day.
 CREATE TABLE attendance_records (
     record_id        INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     student_id       INT UNSIGNED NOT NULL,
@@ -105,11 +97,11 @@ CREATE TABLE attendance_records (
         REFERENCES students(student_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- 8. SCAN LOGS  (every raw tap, valid or not - audit trail)
+-- Scan logs retain every raw tap for audit.
 CREATE TABLE scan_logs (
     log_id      BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     card_uid    VARCHAR(20)  NOT NULL,
-    student_id  INT UNSIGNED NULL,                     -- NULL when the card is unregistered
+    student_id  INT UNSIGNED NULL,                     -- NULL for unregistered cards
     scan_time   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     result      ENUM('TIME_IN','TIME_OUT','INVALID_CARD','OUT_OF_BOUNDS') NOT NULL,
     INDEX idx_scan_time (scan_time),
@@ -117,13 +109,12 @@ CREATE TABLE scan_logs (
         REFERENCES students(student_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
--- 9. EXCUSED ABSENCES  (marked by teachers)
 CREATE TABLE excused_absences (
     excused_id    INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     student_id    INT UNSIGNED NOT NULL,
     absence_date  DATE NOT NULL,
     reason        VARCHAR(255) NOT NULL,
-    marked_by     INT UNSIGNED NULL,                   -- teacher's user_id
+    marked_by     INT UNSIGNED NULL,                   -- teacher/admin user_id
     created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_excused (student_id, absence_date),
     CONSTRAINT fk_exc_student FOREIGN KEY (student_id)
@@ -132,7 +123,6 @@ CREATE TABLE excused_absences (
         REFERENCES users(user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
--- 10. ALERTS  (invalid card, out-of-bounds, absence threshold)
 CREATE TABLE alerts (
     alert_id    INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     alert_type  ENUM('INVALID_CARD','OUT_OF_BOUNDS','THRESHOLD_NEAR','THRESHOLD_REACHED') NOT NULL,
@@ -146,14 +136,13 @@ CREATE TABLE alerts (
         REFERENCES students(student_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- 11. SETTINGS  (key-value config, e.g. absence threshold)
 CREATE TABLE settings (
     setting_key    VARCHAR(50)  PRIMARY KEY,
     setting_value  VARCHAR(100) NOT NULL,
     description    VARCHAR(255) NULL
 ) ENGINE=InnoDB;
 
---  VIEW: absence summary per student (feeds Threshold list + dashboards)
+-- Per-student absence summary for thresholds and dashboards.
 CREATE VIEW v_student_attendance_summary AS
 SELECT  s.student_id,
         s.lrn,
@@ -167,10 +156,7 @@ FROM students s
 LEFT JOIN attendance_records a ON a.student_id = s.student_id
 GROUP BY s.student_id, s.lrn, s.full_name, s.section_id;
 
---  SAMPLE DATA  (for testing only - delete before the final defense)
---  NOTE: password_hash values are PLACEHOLDERS. Generate real BCrypt
---  hashes from Java (BCrypt.hashpw("yourPassword", BCrypt.gensalt()))
---  and replace them, or the login module will reject these accounts.
+-- TEST DATA ONLY: replace placeholder password hashes with real BCrypt hashes before login.
 INSERT INTO settings (setting_key, setting_value, description) VALUES
     ('absence_threshold',       '10', 'Max allowed absences before drop/expulsion flag'),
     ('absence_warning_offset',  '2',  'Warn when student is this many absences from threshold'),
@@ -203,16 +189,4 @@ INSERT INTO attendance_records (student_id, attendance_date, time_in, time_out, 
     (1, CURDATE(), '07:25:00', '16:00:00', 'PRESENT'),
     (2, CURDATE(), NULL,       NULL,       'ABSENT');
 
---  EXAMPLE QUERIES YOUR DAO CLASSES WILL USE
--- Is the card registered?
---   SELECT s.* FROM rfid_cards c JOIN students s ON s.student_id = c.student_id
---   WHERE c.card_uid = ? AND c.status = 'ACTIVE';
---
--- Is the scan within the class schedule?
---   SELECT 1 FROM class_schedules
---   WHERE section_id = ? AND day_of_week = ? AND ? BETWEEN start_time AND end_time;
---
--- Students at or near the absence threshold:
---   SELECT * FROM v_student_attendance_summary
---   WHERE absent_days >= (SELECT CAST(setting_value AS UNSIGNED) FROM settings
---                         WHERE setting_key = 'absence_threshold') - 2;
+-- DAO checks: active card ownership, schedule bounds and absence thresholds.
