@@ -2,11 +2,20 @@ package com.ui;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class LoginFrame extends JFrame {
 
     /** Preview-only login; real authentication and database wiring are pending. */
 
+    private static final String[] BACKGROUNDS = {
+            "/img/IMG_f1a0216c-feb8-4cc4-8251-7af482c734b3.jpg",
+            "/img/IMG_4d6fdd39-146c-4b22-bf5c-eb124f1c7a04.jpg"
+    };
+    private static final Image LOGO = loadImage("/img/deihs-logo.png");
+
+    private final Image background = loadImage(BACKGROUNDS[
+            ThreadLocalRandom.current().nextInt(BACKGROUNDS.length)]);
     private int roleIndex = 0;
     private final JTextField username = Ui.field("Username", 18);
     private final JPasswordField password = Ui.password("Password");
@@ -22,8 +31,8 @@ public class LoginFrame extends JFrame {
 
     private void build() {
         AttendanceTheme.Palette p = Ui.p();
-        JPanel root = new JPanel(new GridBagLayout());
-        root.setBackground(p.background());
+        BackgroundPanel root = new BackgroundPanel(background);
+        root.setLayout(new GridBagLayout());
 
         Ui.Round card = new Ui.Round(new BorderLayout(), p.surface(), p.border(), 16);
         card.setBorder(new javax.swing.border.EmptyBorder(32, 36, 28, 36));
@@ -36,7 +45,8 @@ public class LoginFrame extends JFrame {
         brand.setHorizontalAlignment(SwingConstants.CENTER);
 
         JPanel logo = Ui.transparent(new FlowLayout(FlowLayout.CENTER, 0, 0));
-        logo.add(Ui.avatar("D", 56));
+        Image logoImage = LOGO.getScaledInstance(76, 76, Image.SCALE_SMOOTH);
+        logo.add(new JLabel(new ImageIcon(logoImage)));
 
         JButton signIn = Ui.primary("Sign in");
         signIn.addActionListener(e -> signIn());
@@ -61,6 +71,40 @@ public class LoginFrame extends JFrame {
         getRootPane().setDefaultButton(signIn);
         revalidate();
         repaint();
+    }
+
+    private static Image loadImage(String path) {
+        return new ImageIcon(LoginFrame.class.getResource(path)).getImage();
+    }
+
+    private static final class BackgroundPanel extends JPanel {
+        private static final long serialVersionUID = 1L;
+        private final Image image;
+
+        private BackgroundPanel(Image image) {
+            this.image = image;
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            int width = getWidth();
+            int height = getHeight();
+            double scale = Math.max(
+                    (double) width / image.getWidth(this),
+                    (double) height / image.getHeight(this));
+            int scaledWidth = (int) Math.ceil(image.getWidth(this) * scale);
+            int scaledHeight = (int) Math.ceil(image.getHeight(this) * scale);
+
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                    RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g2.drawImage(image, (width - scaledWidth) / 2, (height - scaledHeight) / 2,
+                    scaledWidth, scaledHeight, this);
+            g2.setColor(new Color(5, 17, 14, 155));
+            g2.fillRect(0, 0, width, height);
+            g2.dispose();
+        }
     }
 
     private void signIn() {
