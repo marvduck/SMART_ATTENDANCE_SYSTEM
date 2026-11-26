@@ -30,6 +30,8 @@ import com.model.StudentAttendanceSummary;
 import com.model.StudentStatus;
 import com.model.Teacher;
 import com.model.User;
+import com.ui.AttendanceTheme;
+import com.ui.LoginFrame;
 import org.mindrot.jbcrypt.BCrypt;
 
 import javax.swing.SwingUtilities;
@@ -77,6 +79,15 @@ public final class Core {
     /** Call once from main before any window opens. */
     public static void start() {
         Runtime.getRuntime().addShutdownHook(new Thread(JDBC::close, "db-close"));
+    }
+
+    /** Launches the Swing application. */
+    public static void main(String[] args) {
+        start();
+        SwingUtilities.invokeLater(() -> {
+            AttendanceTheme.install(false);
+            new LoginFrame().setVisible(true);
+        });
     }
 
     public static boolean dbOnline() {
