@@ -56,7 +56,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
 
-/** UI session, formatting and use-case layer over the DAOs. */
+/** UI formatting and use-case layer over the DAOs. */
 public final class Core {
 
     private Core() {}
